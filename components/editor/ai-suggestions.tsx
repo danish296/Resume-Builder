@@ -1,19 +1,17 @@
-import { DialogHeader } from "@/components/ui/dialog"
-import { DialogContent } from "@/components/ui/dialog"
-// make dialog background unmistakably solid and add a guaranteed in-content overlay to avoid transparency issues
-;<DialogContent className="max-w-lg bg-card text-card-foreground shadow-lg ring-1 ring-border relative">
-  {/* Fallback overlay in case library overlay is not injected */}
-  <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 rounded-lg bg-card" />
-  <DialogHeader>
-    <div className="rounded-md border p-3 text-sm whitespace-pre-wrap bg-emerald-50 dark:bg-teal-950">
-      {/* Content goes here */}
-    </div>
-  </DialogHeader>
-</DialogContent>
+import React from "react"
 
-const AISuggestions = () => {
-  // Component implementation here
+interface AISuggestionsProps {
+  sourceText: string
+  onApply: (text: string) => void
 }
 
-export { AISuggestions }
+const AISuggestions: React.FC<AISuggestionsProps> = ({ sourceText, onApply }) => {
+  // For now, return a simple component since AI functionality isn't implemented
+  return (
+    <div className="text-sm text-muted-foreground">
+      AI suggestions coming soon...
+    </div>
+  )
+}
+
 export default AISuggestions
