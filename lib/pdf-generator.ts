@@ -20,6 +20,8 @@ export interface PdfGenerationResult {
 export async function generateAndDownloadPdf(
   options: PdfGenerationOptions
 ): Promise<PdfGenerationResult> {
+  console.log('Starting PDF generation...', options)
+  
   try {
     const {
       element,
@@ -28,17 +30,35 @@ export async function generateAndDownloadPdf(
       scale = 2
     } = options
 
+    console.log('PDF generation options:', { filename, quality, scale })
+    console.log('Target element:', element)
+
+    if (!element) {
+      throw new Error('No element provided for PDF generation')
+    }
+
+    // Check if element is visible and has content
+    const rect = element.getBoundingClientRect()
+    console.log('Element dimensions:', rect)
+    
+    if (rect.width === 0 || rect.height === 0) {
+      throw new Error('Element has no visible content')
+    }
+
+    console.log('Calling html2canvas...')
+    
     // Generate canvas from HTML element with high quality
     const canvas = await html2canvas(element, {
-      scale: scale,
       useCORS: true,
       allowTaint: true,
-      backgroundColor: '#ffffff',
-      height: element.scrollHeight,
-      width: element.scrollWidth,
-      scrollX: 0,
-      scrollY: 0,
+      logging: true, // Enable logging for debugging
     })
+
+    console.log('html2canvas completed. Canvas dimensions:', canvas.width, 'x', canvas.height)
+
+    if (!canvas || canvas.width === 0 || canvas.height === 0) {
+      throw new Error('Failed to generate canvas from element')
+    }
 
     // Calculate dimensions for A4 page
     const imgWidth = 210 // A4 width in mm
@@ -46,16 +66,21 @@ export async function generateAndDownloadPdf(
     const imgHeight = (canvas.height * imgWidth) / canvas.width
     let heightLeft = imgHeight
 
+    console.log('PDF dimensions calculated:', { imgWidth, imgHeight, pageHeight })
+
     // Create PDF document
+    console.log('Creating PDF document...')
     const pdf = new jsPDF('portrait', 'mm', 'a4')
-    let position = 0
 
     // Add first page
+    const imgData = canvas.toDataURL('image/png', quality)
+    console.log('Generated image data, length:', imgData.length)
+    
     pdf.addImage(
-      canvas.toDataURL('image/png', quality),
+      imgData,
       'PNG',
       0,
-      position,
+      0,
       imgWidth,
       imgHeight,
       undefined,
@@ -65,10 +90,10 @@ export async function generateAndDownloadPdf(
 
     // Add additional pages if content is longer than one page
     while (heightLeft >= 0) {
-      position = heightLeft - imgHeight
+      const position = heightLeft - imgHeight
       pdf.addPage()
       pdf.addImage(
-        canvas.toDataURL('image/png', quality),
+        imgData,
         'PNG',
         0,
         position,
@@ -80,18 +105,23 @@ export async function generateAndDownloadPdf(
       heightLeft -= pageHeight
     }
 
+    console.log('PDF created successfully, triggering download...')
+
     // Trigger download
     pdf.save(filename)
+
+    console.log('PDF download completed successfully')
 
     return {
       success: true,
       filename
     }
   } catch (error) {
-    console.error('PDF generation failed:', error)
+    console.error('PDF generation failed with error:', error)
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: error instanceof Error ? error.message : String(error)
     }
   }
 }

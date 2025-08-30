@@ -157,18 +157,43 @@ export default function EditorPage() {
       // Generate meaningful filename
       const filename = generatePdfFilename(resume.name)
       
-      // Find the preview element within the ref - try multiple selectors
-      let previewElement = previewRef.current.querySelector('article') as HTMLElement
+      // Find the preview element within the ref - try multiple strategies
+      let previewElement: HTMLElement | null = null
+      
+      // Strategy 1: Look for article with aria-label
+      previewElement = previewRef.current.querySelector('article[aria-label="Resume preview"]') as HTMLElement
+      
+      // Strategy 2: Look for any article element
       if (!previewElement) {
-        previewElement = previewRef.current.querySelector('[aria-label="Resume preview"]') as HTMLElement
+        previewElement = previewRef.current.querySelector('article') as HTMLElement
       }
+      
+      // Strategy 3: Look for any element with specific classes that contain resume content
       if (!previewElement) {
-        // Fallback to the first child element if specific selectors don't work
+        previewElement = previewRef.current.querySelector('[class*="resume"], [class*="preview"]') as HTMLElement
+      }
+      
+      // Strategy 4: Use the first child element if nothing else works
+      if (!previewElement && previewRef.current.children.length > 0) {
         previewElement = previewRef.current.children[0] as HTMLElement
       }
       
+      // Strategy 5: Use the ref element itself as last resort
       if (!previewElement) {
-        throw new Error("Preview element not found")
+        previewElement = previewRef.current
+      }
+      
+      console.log('Selected preview element:', previewElement)
+      console.log('Element dimensions:', previewElement?.getBoundingClientRect())
+      
+      if (!previewElement) {
+        throw new Error("Could not find any preview element to convert to PDF")
+      }
+      
+      // Verify element has content
+      const rect = previewElement.getBoundingClientRect()
+      if (rect.width === 0 || rect.height === 0) {
+        throw new Error(`Preview element has no visible content (${rect.width}x${rect.height})`)
       }
       
       // Generate and download PDF
@@ -190,15 +215,19 @@ export default function EditorPage() {
     } catch (error) {
       console.error("PDF download failed:", error)
       
-      // Show error and offer fallback
-      toast.error("PDF generation failed. Opening print dialog as fallback.", { 
-        id: "pdf-generation" 
+      // For debugging - show the actual error message
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      toast.error(`PDF generation failed: ${errorMessage}. Opening print dialog as fallback.`, { 
+        id: "pdf-generation",
+        duration: 5000
       })
       
-      // Fallback to original print functionality
-      const idForPrint = idParam || resume.id
-      const url = `/print/${encodeURIComponent(idForPrint)}?print=1`
-      fallbackToPrint(url)
+      // Small delay before fallback to let user see the error
+      setTimeout(() => {
+        const idForPrint = idParam || resume.id
+        const url = `/print/${encodeURIComponent(idForPrint)}?print=1`
+        fallbackToPrint(url)
+      }, 2000)
     } finally {
       setIsDownloading(false)
     }
