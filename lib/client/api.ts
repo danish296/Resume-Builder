@@ -1,5 +1,9 @@
 export async function signup(data: { email: string; password: string; name?: string }) {
-  const res = await fetch("/api/auth/signup", { method: "POST", body: JSON.stringify(data) })
+  const res = await fetch("/api/auth/signup", { 
+    method: "POST", 
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data) 
+  })
   return res.json()
 }
 export async function verifyEmailTokenUrl(url: string) {
@@ -7,7 +11,11 @@ export async function verifyEmailTokenUrl(url: string) {
   window.location.href = url
 }
 export async function login(data: { email: string; password: string }) {
-  const res = await fetch("/api/auth/login", { method: "POST", body: JSON.stringify(data) })
+  const res = await fetch("/api/auth/login", { 
+    method: "POST", 
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data) 
+  })
   return res.json()
 }
 export async function logout() {
