@@ -6,13 +6,19 @@ import { ResumeForm } from "@/components/editor/form"
 import { ResumePreview } from "@/components/editor/preview"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Download } from "lucide-react"
+import { ArrowLeft, Download, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { toast } from "sonner"
 import {
   getResume as apiGetResume,
   createResume as apiCreateResume,
   updateResume as apiUpdateResume,
 } from "@/lib/client/api"
+import { 
+  generateAndDownloadPdf, 
+  generatePdfFilename, 
+  fallbackToPrint 
+} from "@/lib/pdf-generator"
 
 const STORAGE_KEY = "resumes.v1"
 
@@ -47,6 +53,7 @@ export default function EditorPage() {
   const dataParam = params.get("data")
   const [resumesLocal, setResumesLocal] = useState<Resume[]>([])
   const [resume, setResume] = useState<Resume | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
   const previewRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -136,16 +143,93 @@ export default function EditorPage() {
   }
 
   const onDownloadPDF = async () => {
-    if (!resume) return
+    if (!resume || !previewRef.current || isDownloading) return
+    
+    setIsDownloading(true)
+    
     try {
+      // Save first to ensure data is persisted
       await onSave()
-    } catch {}
-    const idForPrint = idParam || resume.id
-    const url = `/print/${encodeURIComponent(idForPrint)}?print=1`
-    const win = window.open(url, "_blank", "noopener,noreferrer")
-    if (!win) {
-      // Popup blocked: fallback to same tab
-      window.location.href = url
+      
+      // Show loading toast
+      toast.loading("Generating PDF...", { id: "pdf-generation" })
+      
+      // Generate meaningful filename
+      const filename = generatePdfFilename(resume.name)
+      
+      // Find the preview element within the ref - try multiple strategies
+      let previewElement: HTMLElement | null = null
+      
+      // Strategy 1: Look for article with aria-label
+      previewElement = previewRef.current.querySelector('article[aria-label="Resume preview"]') as HTMLElement
+      
+      // Strategy 2: Look for any article element
+      if (!previewElement) {
+        previewElement = previewRef.current.querySelector('article') as HTMLElement
+      }
+      
+      // Strategy 3: Look for any element with specific classes that contain resume content
+      if (!previewElement) {
+        previewElement = previewRef.current.querySelector('[class*="resume"], [class*="preview"]') as HTMLElement
+      }
+      
+      // Strategy 4: Use the first child element if nothing else works
+      if (!previewElement && previewRef.current.children.length > 0) {
+        previewElement = previewRef.current.children[0] as HTMLElement
+      }
+      
+      // Strategy 5: Use the ref element itself as last resort
+      if (!previewElement) {
+        previewElement = previewRef.current
+      }
+      
+      console.log('Selected preview element:', previewElement)
+      console.log('Element dimensions:', previewElement?.getBoundingClientRect())
+      
+      if (!previewElement) {
+        throw new Error("Could not find any preview element to convert to PDF")
+      }
+      
+      // Verify element has content
+      const rect = previewElement.getBoundingClientRect()
+      if (rect.width === 0 || rect.height === 0) {
+        throw new Error(`Preview element has no visible content (${rect.width}x${rect.height})`)
+      }
+      
+      // Generate and download PDF
+      const result = await generateAndDownloadPdf({
+        element: previewElement,
+        filename,
+        quality: 0.95,
+        scale: 2
+      })
+      
+      if (result.success) {
+        toast.success(`PDF downloaded successfully as ${result.filename}`, { 
+          id: "pdf-generation" 
+        })
+      } else {
+        throw new Error(result.error || "PDF generation failed")
+      }
+      
+    } catch (error) {
+      console.error("PDF download failed:", error)
+      
+      // For debugging - show the actual error message
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      toast.error(`PDF generation failed: ${errorMessage}. Opening print dialog as fallback.`, { 
+        id: "pdf-generation",
+        duration: 5000
+      })
+      
+      // Small delay before fallback to let user see the error
+      setTimeout(() => {
+        const idForPrint = idParam || resume.id
+        const url = `/print/${encodeURIComponent(idForPrint)}?print=1`
+        fallbackToPrint(url)
+      }, 2000)
+    } finally {
+      setIsDownloading(false)
     }
   }
 
@@ -179,8 +263,13 @@ export default function EditorPage() {
             <Button variant="outline" onClick={onSave}>
               Save
             </Button>
-            <Button onClick={onDownloadPDF}>
-              <Download className="mr-2 h-4 w-4" /> Download as PDF
+            <Button onClick={onDownloadPDF} disabled={isDownloading}>
+              {isDownloading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              {isDownloading ? "Generating PDF..." : "Download as PDF"}
             </Button>
           </div>
         </div>
