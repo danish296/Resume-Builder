@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { getSql } from "@/lib/db"
 import { hashPassword } from "@/lib/auth"
-import { randomBytes } from "crypto"
 
 export async function POST(req: Request) {
   try {
@@ -11,22 +10,14 @@ export async function POST(req: Request) {
     }
     const sql = getSql()
     const hashed = await hashPassword(password)
+    // Set is_verified = true on user creation
     const users =
-      await sql /*sql*/`insert into users (email, password_hash, name) values (${email}, ${hashed}, ${name || null}) returning id`
+      await sql /*sql*/`insert into users (email, password_hash, name, is_verified) values (${email}, ${hashed}, ${name || null}, true) returning id`
     const userId = users[0].id as string
 
-    const token = randomBytes(32).toString("hex")
-    const expires = new Date(Date.now() + 1000 * 60 * 60 * 24) // 24h
-    await sql /*sql*/`
-      insert into email_verification_tokens (user_id, token, expires_at)
-      values (${userId}, ${token}, ${expires.toISOString()})
-    `
+    // No email verification logic or tokens
 
-    // Dev-friendly: return the verification URL so you can click it
-    const origin = (await req.headers.get("origin")) || "http://localhost:3000"
-    const verifyUrl = `${origin}/api/auth/verify?token=${token}`
-
-    return NextResponse.json({ ok: true, verifyUrl }, { status: 201 })
+    return NextResponse.json({ ok: true }, { status: 201 })
   } catch (e: any) {
     const msg = e?.message?.includes("unique") ? "Email already registered" : e?.message || "Signup failed"
     return NextResponse.json({ error: msg }, { status: 400 })
