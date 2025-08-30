@@ -9,33 +9,78 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ModeToggle } from "@/components/mode-toggle"
 import { useAuth } from "@/hooks/use-auth"
+import { signup as apiSignup } from "@/lib/client/api"
 import { useRef, useState } from "react"
 
 export default function Page() {
   const router = useRouter()
-  const { login } = useAuth()
+  const { loginWithCredentials, loading } = useAuth()
   const [tab, setTab] = useState<"login" | "signup">("login")
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const authRef = useRef<HTMLDivElement | null>(null)
 
-  const handleLogin = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    setError("")
+    setIsSubmitting(true)
+    
     const data = new FormData(e.currentTarget)
     const email = String(data.get("email") || "")
     const password = String(data.get("password") || "")
-    if (!email || !password) return
-    login({ name: email.split("@")[0], email })
-    router.push("/dashboard")
+    
+    if (!email || !password) {
+      setError("Please fill in all fields")
+      setIsSubmitting(false)
+      return
+    }
+
+    try {
+      const result = await loginWithCredentials(email, password)
+      if (result.ok) {
+        router.push("/dashboard")
+      } else {
+        setError(result.error || "Login failed")
+      }
+    } catch (error) {
+      setError("Network error occurred")
+    }
+    setIsSubmitting(false)
   }
 
-  const handleSignup = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    setError("")
+    setIsSubmitting(true)
+    
     const data = new FormData(e.currentTarget)
     const name = String(data.get("name") || "")
     const email = String(data.get("email") || "")
     const password = String(data.get("password") || "")
-    if (!name || !email || !password) return
-    login({ name, email })
-    router.push("/dashboard")
+    
+    if (!name || !email || !password) {
+      setError("Please fill in all fields")
+      setIsSubmitting(false)
+      return
+    }
+
+    try {
+      const signupResult = await apiSignup({ name, email, password })
+      if (signupResult.ok || signupResult.user) {
+        // Try to login after successful signup
+        const loginResult = await loginWithCredentials(email, password)
+        if (loginResult.ok) {
+          router.push("/dashboard")
+        } else {
+          setError("Account created but login failed. Please try logging in.")
+        }
+      } else {
+        setError(signupResult.error || "Signup failed")
+      }
+    } catch (error) {
+      setError("Network error occurred")
+    }
+    setIsSubmitting(false)
   }
 
   return (
@@ -85,6 +130,11 @@ export default function Page() {
               </TabsList>
               <TabsContent value="login" className="mt-4">
                 <form className="space-y-3 rounded-lg border bg-card p-4 text-left" onSubmit={handleLogin}>
+                  {error && (
+                    <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
+                      {error}
+                    </div>
+                  )}
                   <div>
                     <Label htmlFor="email">Email</Label>
                     <Input
@@ -93,22 +143,40 @@ export default function Page() {
                       type="email"
                       placeholder="you@example.com"
                       className="bg-background"
+                      disabled={isSubmitting}
                     />
                   </div>
                   <div>
                     <Label htmlFor="password">Password</Label>
-                    <Input id="password" name="password" type="password" className="bg-background" />
+                    <Input 
+                      id="password" 
+                      name="password" 
+                      type="password" 
+                      className="bg-background" 
+                      disabled={isSubmitting}
+                    />
                   </div>
-                  <Button type="submit" className="w-full">
-                    Login
+                  <Button type="submit" className="w-full" disabled={isSubmitting || loading}>
+                    {isSubmitting ? "Logging in..." : "Login"}
                   </Button>
                 </form>
               </TabsContent>
               <TabsContent value="signup" className="mt-4">
                 <form className="space-y-3 rounded-lg border bg-card p-4 text-left" onSubmit={handleSignup}>
+                  {error && (
+                    <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
+                      {error}
+                    </div>
+                  )}
                   <div>
                     <Label htmlFor="name">Full Name</Label>
-                    <Input id="name" name="name" placeholder="Jane Doe" className="bg-background" />
+                    <Input 
+                      id="name" 
+                      name="name" 
+                      placeholder="Jane Doe" 
+                      className="bg-background" 
+                      disabled={isSubmitting}
+                    />
                   </div>
                   <div>
                     <Label htmlFor="email2">Email</Label>
@@ -118,14 +186,21 @@ export default function Page() {
                       type="email"
                       placeholder="you@example.com"
                       className="bg-background"
+                      disabled={isSubmitting}
                     />
                   </div>
                   <div>
                     <Label htmlFor="password2">Password</Label>
-                    <Input id="password2" name="password" type="password" className="bg-background" />
+                    <Input 
+                      id="password2" 
+                      name="password" 
+                      type="password" 
+                      className="bg-background" 
+                      disabled={isSubmitting}
+                    />
                   </div>
-                  <Button type="submit" className="w-full">
-                    Create Account
+                  <Button type="submit" className="w-full" disabled={isSubmitting || loading}>
+                    {isSubmitting ? "Creating Account..." : "Create Account"}
                   </Button>
                 </form>
               </TabsContent>
