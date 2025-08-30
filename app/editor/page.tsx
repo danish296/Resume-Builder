@@ -6,13 +6,19 @@ import { ResumeForm } from "@/components/editor/form"
 import { ResumePreview } from "@/components/editor/preview"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Download } from "lucide-react"
+import { ArrowLeft, Download, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { toast } from "sonner"
 import {
   getResume as apiGetResume,
   createResume as apiCreateResume,
   updateResume as apiUpdateResume,
 } from "@/lib/client/api"
+import { 
+  generateAndDownloadPdf, 
+  generatePdfFilename, 
+  fallbackToPrint 
+} from "@/lib/pdf-generator"
 
 const STORAGE_KEY = "resumes.v1"
 
@@ -47,6 +53,7 @@ export default function EditorPage() {
   const dataParam = params.get("data")
   const [resumesLocal, setResumesLocal] = useState<Resume[]>([])
   const [resume, setResume] = useState<Resume | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
   const previewRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -136,16 +143,64 @@ export default function EditorPage() {
   }
 
   const onDownloadPDF = async () => {
-    if (!resume) return
+    if (!resume || !previewRef.current || isDownloading) return
+    
+    setIsDownloading(true)
+    
     try {
+      // Save first to ensure data is persisted
       await onSave()
-    } catch {}
-    const idForPrint = idParam || resume.id
-    const url = `/print/${encodeURIComponent(idForPrint)}?print=1`
-    const win = window.open(url, "_blank", "noopener,noreferrer")
-    if (!win) {
-      // Popup blocked: fallback to same tab
-      window.location.href = url
+      
+      // Show loading toast
+      toast.loading("Generating PDF...", { id: "pdf-generation" })
+      
+      // Generate meaningful filename
+      const filename = generatePdfFilename(resume.name)
+      
+      // Find the preview element within the ref - try multiple selectors
+      let previewElement = previewRef.current.querySelector('article') as HTMLElement
+      if (!previewElement) {
+        previewElement = previewRef.current.querySelector('[aria-label="Resume preview"]') as HTMLElement
+      }
+      if (!previewElement) {
+        // Fallback to the first child element if specific selectors don't work
+        previewElement = previewRef.current.children[0] as HTMLElement
+      }
+      
+      if (!previewElement) {
+        throw new Error("Preview element not found")
+      }
+      
+      // Generate and download PDF
+      const result = await generateAndDownloadPdf({
+        element: previewElement,
+        filename,
+        quality: 0.95,
+        scale: 2
+      })
+      
+      if (result.success) {
+        toast.success(`PDF downloaded successfully as ${result.filename}`, { 
+          id: "pdf-generation" 
+        })
+      } else {
+        throw new Error(result.error || "PDF generation failed")
+      }
+      
+    } catch (error) {
+      console.error("PDF download failed:", error)
+      
+      // Show error and offer fallback
+      toast.error("PDF generation failed. Opening print dialog as fallback.", { 
+        id: "pdf-generation" 
+      })
+      
+      // Fallback to original print functionality
+      const idForPrint = idParam || resume.id
+      const url = `/print/${encodeURIComponent(idForPrint)}?print=1`
+      fallbackToPrint(url)
+    } finally {
+      setIsDownloading(false)
     }
   }
 
@@ -179,8 +234,13 @@ export default function EditorPage() {
             <Button variant="outline" onClick={onSave}>
               Save
             </Button>
-            <Button onClick={onDownloadPDF}>
-              <Download className="mr-2 h-4 w-4" /> Download as PDF
+            <Button onClick={onDownloadPDF} disabled={isDownloading}>
+              {isDownloading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              {isDownloading ? "Generating PDF..." : "Download as PDF"}
             </Button>
           </div>
         </div>
