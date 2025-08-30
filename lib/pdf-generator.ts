@@ -47,12 +47,54 @@ export async function generateAndDownloadPdf(
 
     console.log('Calling html2canvas...')
     
-    // Generate canvas from HTML element with high quality
-    const canvas = await html2canvas(element, {
-      useCORS: true,
-      allowTaint: true,
-      logging: true, // Enable logging for debugging
+    // Create a simple clean element with basic styling to avoid CSS issues
+    const cleanElement = document.createElement('div')
+    cleanElement.innerHTML = element.innerHTML
+    cleanElement.style.cssText = `
+      font-family: Arial, sans-serif;
+      color: #000000;
+      background-color: #ffffff;
+      line-height: 1.5;
+      padding: 20px;
+      width: ${element.offsetWidth}px;
+      min-height: ${element.offsetHeight}px;
+      position: absolute;
+      left: -9999px;
+      top: 0;
+    `
+    
+    // Apply basic styling to all child elements to override problematic CSS
+    const allElements = cleanElement.querySelectorAll('*')
+    allElements.forEach((el) => {
+      const htmlEl = el as HTMLElement
+      htmlEl.style.color = '#000000'
+      htmlEl.style.backgroundColor = 'transparent'
+      htmlEl.style.borderColor = '#000000'
+      
+      // Remove any problematic CSS classes
+      htmlEl.className = ''
     })
+    
+    // Add to document temporarily for rendering
+    document.body.appendChild(cleanElement)
+    
+    let canvas: HTMLCanvasElement
+    try {
+      canvas = await html2canvas(cleanElement, {
+        useCORS: true,
+        allowTaint: true,
+        logging: false, // Disable logging to reduce noise
+      })
+      
+      // Clean up temporary element
+      document.body.removeChild(cleanElement)
+    } catch (error) {
+      // Clean up on error
+      if (document.body.contains(cleanElement)) {
+        document.body.removeChild(cleanElement)
+      }
+      throw error
+    }
 
     console.log('html2canvas completed. Canvas dimensions:', canvas.width, 'x', canvas.height)
 
