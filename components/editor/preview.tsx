@@ -1,86 +1,91 @@
 // Parent component that ties everything together
-"use client"
+"use client";
 
-import { useState } from 'react'
-import { ResumeCard } from '@/components/resume-card'
-import { ResumePreview } from '@/components/editor/preview'  
-import { generateAndDownloadPdf } from '@/lib/pdf-generator'
-import type { Resume } from '@/lib/types'
+import { useState } from 'react';
+import { ResumeCard } from '@/components/resume-card';
+import { ResumePreview } from '@/components/editor/preview';  
+import { generateAndDownloadPdf, generatePdfFilename } from '@/lib/pdf-generator';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Copy, Pencil, Download, Trash2 } from 'lucide-react';
+import { format } from 'date-fns';
+import { useRouter } from 'next/navigation';
+import type { Resume } from '@/lib/types';
 
 type Props = {
-  resumes: Resume[]
-  onDelete: (id: string) => void
-  onDuplicate: (id: string) => void
-}
+  resumes: Resume[];
+  onDelete: (id: string) => void;
+  onDuplicate: (id: string) => void;
+};
 
 export function ResumeDashboard({ resumes, onDelete, onDuplicate }: Props) {
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState<string | null>(null)
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<string | null>(null);
 
   const handleDownload = async (resumeId: string) => {
-    const resume = resumes.find(r => r.id === resumeId)
+    const resume = resumes.find(r => r.id === resumeId);
     if (!resume) {
-      console.error('Resume not found')
-      return
+      console.error('Resume not found');
+      return;
     }
 
-    setIsGeneratingPdf(resumeId)
+    setIsGeneratingPdf(resumeId);
 
     try {
       // Create a temporary container for the resume
-      const tempContainer = document.createElement('div')
-      tempContainer.id = `temp-resume-${resumeId}`
-      tempContainer.style.position = 'absolute'
-      tempContainer.style.left = '-9999px'
-      tempContainer.style.top = '0'
-      tempContainer.style.width = '800px' // Fixed width for consistent PDF
-      tempContainer.style.backgroundColor = 'white'
+      const tempContainer = document.createElement('div');
+      tempContainer.id = `temp-resume-${resumeId}`;
+      tempContainer.style.position = 'absolute';
+      tempContainer.style.left = '-9999px';
+      tempContainer.style.top = '0';
+      tempContainer.style.width = '800px'; // Fixed width for consistent PDF
+      tempContainer.style.backgroundColor = 'white';
       
-      document.body.appendChild(tempContainer)
+      document.body.appendChild(tempContainer);
 
       // Render the resume using React (you'll need to use ReactDOM.render or similar)
       // For now, let's assume you have a way to get the resume element
       // This is a simplified approach - you might need to use ReactDOMServer
       
       // Alternative: Find existing preview element
-      const existingPreview = document.querySelector(`[data-resume-id="${resumeId}"]`) as HTMLElement
+      const existingPreview = document.querySelector(`[data-resume-id="${resumeId}"]`) as HTMLElement;
       
-      let targetElement: HTMLElement
+      let targetElement: HTMLElement;
       
       if (existingPreview) {
         // Clone the existing preview
-        targetElement = existingPreview.cloneNode(true) as HTMLElement
-        tempContainer.appendChild(targetElement)
+        targetElement = existingPreview.cloneNode(true) as HTMLElement;
+        tempContainer.appendChild(targetElement);
       } else {
         // Create the resume HTML manually (fallback)
-        tempContainer.innerHTML = generateResumeHTML(resume)
-        targetElement = tempContainer
+        tempContainer.innerHTML = generateResumeHTML(resume);
+        targetElement = tempContainer;
       }
 
       // Generate PDF
-      const filename = generatePdfFilename(resume.name, resume.role)
+      const filename = generatePdfFilename(resume.name, resume.role);
       const result = await generateAndDownloadPdf({
         element: targetElement,
         filename,
         quality: 1,
         scale: 2
-      })
+      });
 
       // Clean up
-      document.body.removeChild(tempContainer)
+      document.body.removeChild(tempContainer);
 
       if (result.success) {
-        console.log('PDF generated successfully:', result.filename)
+        console.log('PDF generated successfully:', result.filename);
       } else {
-        console.error('PDF generation failed:', result.error)
+        console.error('PDF generation failed:', result.error);
         // You might want to show a toast notification here
       }
 
     } catch (error) {
-      console.error('Download failed:', error)
+      console.error('Download failed:', error);
     } finally {
-      setIsGeneratingPdf(null)
+      setIsGeneratingPdf(null);
     }
-  }
+  };
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -112,12 +117,12 @@ export function ResumeDashboard({ resumes, onDelete, onDuplicate }: Props) {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // Fallback function to generate resume HTML if React rendering isn't available
 function generateResumeHTML(resume: Resume): string {
-  const contacts = [resume.email, resume.phone, resume.linkedin, resume.site].filter(Boolean)
+  const contacts = [resume.email, resume.phone, resume.linkedin, resume.site].filter(Boolean);
   
   return `
     <article class="mx-auto w-full max-w-xl rounded-lg border bg-white p-6 text-black shadow-sm">
@@ -162,17 +167,27 @@ function generateResumeHTML(resume: Resume): string {
         </section>
       ` : ''}
     </article>
-  `
+  `;
 }
 
 // Enhanced ResumeCard with download state
+type EnhancedResumeCardProps = {
+  resume: Resume;
+  onDelete: (id: string) => void;
+  onDownload: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  isDownloading?: boolean;
+};
+
 export function EnhancedResumeCard({ 
   resume, 
   onDelete, 
   onDownload, 
   onDuplicate,
   isDownloading = false 
-}: Props & { isDownloading?: boolean }) {
+}: EnhancedResumeCardProps) {
+  const router = useRouter();
+
   return (
     <Card className="group flex h-full flex-col border-border/80 transition-shadow hover:shadow-sm">
       <CardHeader className="space-y-0">
@@ -231,5 +246,5 @@ export function EnhancedResumeCard({
         </div>
       </CardFooter>
     </Card>
-  )
+  );
 }
