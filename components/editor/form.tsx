@@ -11,7 +11,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 type Props = {
   value: Resume
   onChange: (next: Resume) => void
-  onSave: () => void
+  onSave?: () => void // Make it optional since we're not using it in this component anymore
 }
 
 function newSection(): ResumeSection {
