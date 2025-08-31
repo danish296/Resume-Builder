@@ -2,9 +2,9 @@
 "use client"
 
 import { useState } from 'react'
-import { ResumeCard } from './ResumeCard'
-import { ResumePreview } from './ResumePreview'
-import { generateAndDownloadPdf, generatePdfFilename } from './pdf-generator'
+import { ResumeCard } from '@/components/resume-card'
+import { ResumePreview } from '@/components/editor/preview'  
+import { generateAndDownloadPdf } from '@/lib/pdf-generator'
 import type { Resume } from '@/lib/types'
 
 type Props = {

@@ -36,8 +36,8 @@ export async function POST(req: Request) {
   } catch (e: unknown) {
     const error = e as { message?: string }
     const msg = error?.message?.includes("unique") ? "Email already registered" : error?.message || "Signup failed"
-    return NextResponse.json({ ok: true }, { status: 201 })
-  } catch (e: any) {
+    return NextResponse.json({ ok: true }, { status: 201 }); // ✅ Added semicolon
+  } catch (e: any) {  
     const msg = e?.message?.includes("unique") ? "Email already registered" : e?.message || "Signup failed"
     return NextResponse.json({ error: msg }, { status: 400 })
   }
