@@ -4,6 +4,8 @@ import { Nav } from "@/components/nav"
 import { Button } from "@/components/ui/button"
 import type { Resume } from "@/lib/types"
 import { ResumeCard } from "@/components/resume-card"
+import { ResumePreview } from "@/components/resume-preview"
+import { generateAndDownloadPdf, generatePdfFilename } from "@/lib/pdf-generator"
 import { Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
@@ -52,6 +54,7 @@ export default function DashboardPage() {
   const { user, logout } = useAuth()
   const [resumes, setResumes] = useState<Resume[]>([])
   const [loading, setLoading] = useState(false)
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -167,9 +170,51 @@ export default function DashboardPage() {
     saveResumesLocal(next)
   }
 
-  const onDownload = (id: string) => {
-    // Use print route for PDF instead of JSON
-    window.open(`/print/${id}?print=1`, "_blank")
+  const onDownload = async (id: string) => {
+    const resume = resumes.find(r => r.id === id)
+    if (!resume) {
+      console.error('Resume not found')
+      return
+    }
+
+    setIsGeneratingPdf(id)
+
+    try {
+      // Wait for fonts to load
+      await document.fonts.ready
+
+      // Find the hidden preview element
+      const previewElement = document.querySelector(`[data-resume-id="${id}"]`) as HTMLElement
+      
+      if (previewElement) {
+        const filename = generatePdfFilename(resume.name, resume.role)
+        const result = await generateAndDownloadPdf({
+          element: previewElement,
+          filename,
+          quality: 1,
+          scale: 2
+        })
+
+        if (result.success) {
+          console.log('PDF generated successfully:', result.filename)
+        } else {
+          console.error('PDF generation failed:', result.error)
+          // Fallback to print route
+          window.open(`/print/${id}?print=1`, "_blank")
+        }
+      } else {
+        console.error('Preview element not found, using fallback')
+        // Fallback to your existing print route
+        window.open(`/print/${id}?print=1`, "_blank")
+      }
+
+    } catch (error) {
+      console.error('Download failed:', error)
+      // Fallback to your existing print route
+      window.open(`/print/${id}?print=1`, "_blank")
+    } finally {
+      setIsGeneratingPdf(null)
+    }
   }
 
   return (
@@ -198,11 +243,39 @@ export default function DashboardPage() {
             No resumes yet. Create your first one.
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {resumes.map((r) => (
-              <ResumeCard key={r.id} resume={r} onDuplicate={onDuplicate} onDelete={onDelete} onDownload={onDownload} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {resumes.map((r) => (
+                <div key={r.id}>
+                  <ResumeCard 
+                    resume={r} 
+                    onDuplicate={onDuplicate} 
+                    onDelete={onDelete} 
+                    onDownload={onDownload} 
+                  />
+                  
+                  {/* Hidden preview for PDF generation */}
+                  <div 
+                    data-resume-id={r.id}
+                    className="fixed -left-[9999px] top-0 w-[800px] bg-white pointer-events-none"
+                    style={{ visibility: 'hidden' }}
+                  >
+                    <ResumePreview resume={r} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Loading overlay for PDF generation */}
+            {isGeneratingPdf && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-lg p-6 flex items-center gap-3 shadow-lg">
+                  <div className="w-6 h-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
+                  <p className="text-sm font-medium">Generating PDF...</p>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </section>
     </main>
