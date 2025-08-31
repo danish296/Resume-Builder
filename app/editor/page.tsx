@@ -1,11 +1,14 @@
 "use client"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import { Nav } from "@/components/nav"
 import type { Resume } from "@/lib/types"
 import { ResumeForm } from "@/components/editor/form"
 import { ResumePreview } from "@/components/editor/preview"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { ArrowLeft, Download, Save, Check } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { useAuth } from "@/hooks/use-auth"
 import { ArrowLeft, Download, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
@@ -48,13 +51,18 @@ function fromSharedData(param: string | null): Resume | null {
 
 export default function EditorPage() {
   const router = useRouter()
+  const { user, logout } = useAuth()
   const params = useSearchParams()
   const idParam = params.get("id")
   const dataParam = params.get("data")
   const [resumesLocal, setResumesLocal] = useState<Resume[]>([])
   const [resume, setResume] = useState<Resume | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const previewRef = useRef<HTMLDivElement>(null)
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     setResumesLocal(loadResumesLocal())
@@ -115,10 +123,26 @@ export default function EditorPage() {
     }
   }, [idParam, dataParam])
 
-  const onChange = (next: Resume) => setResume(next)
+  const onChange = (next: Resume) => {
+    setResume(next)
+    setHasUnsavedChanges(true)
+    
+    // Auto-save with debounce (only for authenticated users)
+    if (user) {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+      saveTimeoutRef.current = setTimeout(() => {
+        onSave(true) // true indicates auto-save
+      }, 2000) // 2 second debounce
+    }
+  }
 
-  const onSave = async () => {
+  const onSave = useCallback(async (isAutoSave = false) => {
     if (!resume) return
+    
+    if (!isAutoSave) setIsSaving(true)
+    
     try {
       if (idParam) {
         await apiUpdateResume(idParam, { title: resume.name || "Untitled Resume", data: resume })
@@ -130,17 +154,36 @@ export default function EditorPage() {
           router.replace(`/editor?id=${newId}`)
         }
       }
+      setLastSaved(new Date())
+      setHasUnsavedChanges(false)
       return
     } catch {
-      // Fallback local
-      const idx = resumesLocal.findIndex((r) => r.id === resume.id)
-      const next = [...resumesLocal]
-      if (idx === -1) next.unshift(resume)
-      else next[idx] = resume
-      setResumesLocal(next)
-      saveResumesLocal(next)
+      // Fallback local save only for manual saves
+      if (!isAutoSave) {
+        const idx = resumesLocal.findIndex((r) => r.id === resume.id)
+        const next = [...resumesLocal]
+        if (idx === -1) next.unshift(resume)
+        else next[idx] = resume
+        setResumesLocal(next)
+        saveResumesLocal(next)
+        setLastSaved(new Date())
+        setHasUnsavedChanges(false)
+      }
+    } finally {
+      if (!isAutoSave) setIsSaving(false)
     }
-  }
+  }, [resume, idParam, resumesLocal, router])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  const handleSaveClick = () => onSave(false)
 
   const onDownloadPDF = async () => {
     if (!resume || !previewRef.current || isDownloading) return
@@ -148,6 +191,14 @@ export default function EditorPage() {
     setIsDownloading(true)
     
     try {
+      await onSave(false)
+    } catch {}
+    const idForPrint = idParam || resume.id
+    const url = `/print/${encodeURIComponent(idForPrint)}?print=1`
+    const win = window.open(url, "_blank", "noopener,noreferrer")
+    if (!win) {
+      // Popup blocked: fallback to same tab
+      window.location.href = url
       // Save first to ensure data is persisted
       await onSave()
       
@@ -244,7 +295,13 @@ export default function EditorPage() {
 
   return (
     <main className="min-h-screen">
-      <Nav />
+      <Nav 
+        userName={user?.name}
+        onLogout={() => {
+          logout()
+          router.push("/")
+        }}
+      />
       <section className="mx-auto max-w-6xl gap-6 px-4 py-6">
         <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
@@ -260,8 +317,32 @@ export default function EditorPage() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={onSave}>
-              Save
+            {user && lastSaved && (
+              <span className="text-xs text-muted-foreground">
+                Last saved: {lastSaved.toLocaleTimeString()}
+              </span>
+            )}
+            <Button 
+              variant="outline" 
+              onClick={handleSaveClick}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <>
+                  <Save className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : hasUnsavedChanges ? (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save
+                </>
+              ) : (
+                <>
+                  <Check className="mr-2 h-4 w-4" />
+                  Saved
+                </>
+              )}
             </Button>
             <Button onClick={onDownloadPDF} disabled={isDownloading}>
               {isDownloading ? (
@@ -276,7 +357,7 @@ export default function EditorPage() {
 
         <div className="lg:grid lg:grid-cols-2 lg:gap-6">
           <div className="flex flex-col gap-4">
-            <ResumeForm value={resume} onChange={onChange} onSave={onSave} />
+            <ResumeForm value={resume} onChange={onChange} />
           </div>
 
           <div className="mt-6 lg:mt-0">

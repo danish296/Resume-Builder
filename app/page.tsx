@@ -12,17 +12,49 @@ import { useAuth } from "@/hooks/use-auth"
 import { signup as apiSignup } from "@/lib/client/api"
 import { useRef, useState } from "react"
 
+function checkPasswordStrength(password: string): { score: number; feedback: string } {
+  if (password.length < 8) return { score: 0, feedback: "Password must be at least 8 characters" }
+  
+  let score = 0
+  const feedback: string[] = []
+  
+  if (password.length >= 8) score++
+  if (/[a-z]/.test(password)) score++
+  if (/[A-Z]/.test(password)) score++
+  if (/[0-9]/.test(password)) score++
+  if (/[^A-Za-z0-9]/.test(password)) score++
+  
+  if (score < 3) feedback.push("Add uppercase, lowercase, numbers or symbols")
+  
+  const messages = {
+    1: "Very weak",
+    2: "Weak", 
+    3: "Fair",
+    4: "Good",
+    5: "Strong"
+  }
+  
+  return { 
+    score, 
+    feedback: score > 0 ? messages[score as keyof typeof messages] : "Too short" 
+  }
+}
+
 export default function Page() {
   const router = useRouter()
   const { loginWithCredentials, loading } = useAuth()
   const [tab, setTab] = useState<"login" | "signup">("login")
   const [error, setError] = useState("")
+  const [successMessage, setSuccessMessage] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [password, setPassword] = useState("")
+  const [passwordStrength, setPasswordStrength] = useState({ score: 0, feedback: "" })
   const authRef = useRef<HTMLDivElement | null>(null)
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError("")
+    setSuccessMessage("")
     setIsSubmitting(true)
     
     const data = new FormData(e.currentTarget)
@@ -42,7 +74,7 @@ export default function Page() {
       } else {
         setError(result.error || "Login failed")
       }
-    } catch (error) {
+    } catch {
       setError("Network error occurred")
     }
     setIsSubmitting(false)
@@ -64,20 +96,26 @@ export default function Page() {
       return
     }
 
+    // Basic password validation
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long")
+      setIsSubmitting(false)
+      return
+    }
+
     try {
       const signupResult = await apiSignup({ name, email, password })
-      if (signupResult.ok || signupResult.user) {
-        // Try to login after successful signup
-        const loginResult = await loginWithCredentials(email, password)
-        if (loginResult.ok) {
-          router.push("/dashboard")
-        } else {
-          setError("Account created but login failed. Please try logging in.")
-        }
+      if (signupResult.ok) {
+        // Show success message and ask user to verify email
+        setError("")
+        setSuccessMessage("Account created successfully! Please check your email to verify your account before logging in.")
+        // Reset form and show success state
+        e.currentTarget.reset()
+        setTab("login")
       } else {
         setError(signupResult.error || "Signup failed")
       }
-    } catch (error) {
+    } catch {
       setError("Network error occurred")
     }
     setIsSubmitting(false)
@@ -123,7 +161,13 @@ export default function Page() {
 
         <div id="auth" ref={authRef} className="w-full">
           <div className="rounded-xl border bg-card p-4 shadow-sm md:p-6">
-            <Tabs value={tab} onValueChange={(v) => setTab(v as "login" | "signup")} className="w-full">
+            <Tabs value={tab} onValueChange={(v) => {
+              setTab(v as "login" | "signup")
+              setError("")
+              setSuccessMessage("")
+              setPassword("")
+              setPasswordStrength({ score: 0, feedback: "" })
+            }} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="login">Login</TabsTrigger>
                 <TabsTrigger value="signup">Sign Up</TabsTrigger>
@@ -133,6 +177,11 @@ export default function Page() {
                   {error && (
                     <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
                       {error}
+                    </div>
+                  )}
+                  {successMessage && (
+                    <div className="rounded-md bg-green-50 p-3 text-sm text-green-700 border border-green-200">
+                      {successMessage}
                     </div>
                   )}
                   <div>
@@ -159,6 +208,15 @@ export default function Page() {
                   <Button type="submit" className="w-full" disabled={isSubmitting || loading}>
                     {isSubmitting ? "Logging in..." : "Login"}
                   </Button>
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      className="text-sm text-muted-foreground hover:text-foreground underline"
+                      onClick={() => alert("Password reset functionality available in production. For demo, contact support.")}
+                    >
+                      Forgot your password?
+                    </button>
+                  </div>
                 </form>
               </TabsContent>
               <TabsContent value="signup" className="mt-4">
@@ -197,7 +255,39 @@ export default function Page() {
                       type="password" 
                       className="bg-background" 
                       disabled={isSubmitting}
+                      value={password}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setPassword(value)
+                        setPasswordStrength(checkPasswordStrength(value))
+                      }}
                     />
+                    {password && (
+                      <div className="mt-2">
+                        <div className="flex gap-1 mb-1">
+                          {[1, 2, 3, 4, 5].map((level) => (
+                            <div
+                              key={level}
+                              className={`h-1 flex-1 rounded ${
+                                level <= passwordStrength.score
+                                  ? passwordStrength.score <= 2
+                                    ? "bg-red-400"
+                                    : passwordStrength.score <= 3
+                                    ? "bg-yellow-400"
+                                    : "bg-green-400"
+                                  : "bg-gray-200"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <p className={`text-xs ${
+                          passwordStrength.score <= 2 ? "text-red-600" : 
+                          passwordStrength.score <= 3 ? "text-yellow-600" : "text-green-600"
+                        }`}>
+                          {passwordStrength.feedback}
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <Button type="submit" className="w-full" disabled={isSubmitting || loading}>
                     {isSubmitting ? "Creating Account..." : "Create Account"}
